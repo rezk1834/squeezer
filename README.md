@@ -16,4 +16,3 @@ Static site, no build step.
 
 ## Browser support
 Needs WebCodecs encoding: recent Chrome, Edge, Safari. Firefox support varies.
-"# squeezer" 
