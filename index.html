@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Squeeze: fit a whole movie into 1 to 5 seconds</title>
+<meta name="description" content="Turn any video into 1, 2, 3, 4 and 5 second time-lapses. Runs entirely in your browser; nothing is uploaded.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #E8EDF1;
+    --panel: #F7F9FA;
+    --ink: #12202B;
+    --muted: #55656F;
+    --line: #C5D0D8;
+    --accent: #0E7C7B;
+    --accent-ink: #FFFFFF;
+    --error: #B3261E;
+    --display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+    --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--ink); font-family: var(--body); line-height: 1.5; }
+  body { margin: 0; padding: 40px 20px 80px; }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 { font-family: var(--display); font-weight: 700; font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.05; letter-spacing: -0.02em; margin: 0 0 14px; max-width: 16em; }
+  .lede { color: var(--muted); max-width: 40em; margin: 0 0 32px; font-size: 1.05rem; }
+
+  .drop { background: var(--panel); border: 2px dashed var(--line); border-radius: 6px; padding: 36px 24px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over, .drop:focus-visible { border-color: var(--accent); background: #fff; outline: none; }
+  .drop strong { font-family: var(--display); font-size: 1.25rem; display: block; margin-bottom: 4px; }
+  .drop span { color: var(--muted); }
+  .drop input { display: none; }
+  .file-meta { margin-top: 14px; font-size: .95rem; color: var(--muted); min-height: 1.4em; }
+  .file-meta b { color: var(--ink); font-weight: 600; }
+
+  .options { display: flex; flex-wrap: wrap; gap: 24px 40px; align-items: flex-end; margin: 24px 0; }
+  fieldset { border: 0; padding: 0; margin: 0; }
+  legend, label.lbl { font-weight: 600; font-size: .9rem; margin-bottom: 8px; display: block; padding: 0; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--panel); }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { padding: 9px 16px; cursor: pointer; font-size: .95rem; border-right: 1px solid var(--line); }
+  .seg label:last-of-type { border-right: 0; }
+  .seg input:checked + label { background: var(--ink); color: #fff; }
+  .seg input:focus-visible + label { outline: 3px solid var(--accent); outline-offset: -3px; }
+  select { font: inherit; padding: 9px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); }
+
+  .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 32px; }
+  button { font: inherit; font-weight: 600; padding: 11px 22px; border-radius: 4px; border: 1px solid var(--ink); background: var(--ink); color: #fff; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--ink); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  #status { color: var(--muted); font-size: .95rem; }
+  #status.err { color: var(--error); font-weight: 600; }
+
+  .rows { display: grid; gap: 14px; }
+  .row { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px; display: grid; grid-template-columns: 120px 1fr; gap: 6px 20px; align-items: center; }
+  .row .len { font-family: var(--display); font-weight: 700; font-size: 2.4rem; line-height: 1; letter-spacing: -0.02em; }
+  .row .len small { font-size: 1rem; font-weight: 500; color: var(--muted); margin-left: 2px; }
+  .row .desc { color: var(--muted); font-size: .9rem; }
+  .strip { height: 18px; background: repeating-linear-gradient(90deg, var(--line) 0 10px, transparent 10px 13px); position: relative; margin: 6px 0; }
+  .strip i { position: absolute; inset: 0 auto 0 0; width: 0; overflow: hidden; background: repeating-linear-gradient(90deg, var(--accent) 0 10px, transparent 10px 13px); }
+  .result { grid-column: 1 / -1; display: none; gap: 16px; flex-wrap: wrap; align-items: flex-start; padding-top: 10px; }
+  .result.on { display: flex; }
+  .result figure { margin: 0; }
+  .result video { display: block; width: 280px; max-width: 100%; background: #000; border-radius: 3px; }
+  .result figcaption { margin-top: 6px; font-size: .85rem; color: var(--muted); display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  .result a { color: var(--accent); font-weight: 600; }
+  .result .fail { color: var(--error); font-size: .9rem; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  .foot { margin-top: 40px; color: var(--muted); font-size: .85rem; max-width: 46em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fit a whole movie into 1 to 5 seconds.</h1>
+  <p class="lede">Pick a video and get five silent time-lapses, 1 to 5 seconds long, each containing the entire film. Decoding happens with your browser's own video decoder, so nothing is uploaded and any file your browser can play will work.</p>
+
+  <label class="drop" id="drop" tabindex="0">
+    <input type="file" id="file" accept="video/*,.mkv,.mov,.mp4,.webm">
+    <strong>Choose a video or drop it here</strong>
+    <span>Stays on your device</span>
+  </label>
+  <div class="file-meta" id="meta" aria-live="polite"></div>
+
+  <div class="options">
+    <fieldset>
+      <legend>Output format</legend>
+      <div class="seg">
+        <input type="radio" name="fmt" id="f-mp4" value="mp4"><label for="f-mp4">MP4</label>
+        <input type="radio" name="fmt" id="f-webm" value="webm"><label for="f-webm">WebM</label>
+        <input type="radio" name="fmt" id="f-both" value="both" checked><label for="f-both">Both</label>
+      </div>
+    </fieldset>
+    <div>
+      <label class="lbl" for="size">Frame size</label>
+      <select id="size">
+        <option value="1080" selected>Fit within 1080p</option>
+        <option value="720">Fit within 720p</option>
+        <option value="480">Fit within 480p</option>
+        <option value="0">Original size</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="go" disabled>Make the 5 videos</button>
+    <button id="stop" class="ghost" disabled>Cancel</button>
+    <span id="status" role="status" aria-live="polite"></span>
+  </div>
+
+  <section class="rows" id="rows" aria-label="Results"></section>
+
+  <p class="foot">Each video plays at 60 frames per second, so the 1 second clip holds 60 frames and the 5 second clip holds 300, picked at even intervals across the whole runtime. Audio is left out.</p>
+</main>
+
+<script type="module">
+import {
+  Input, BlobSource, ALL_FORMATS, VideoSampleSink,
+  Output, BufferTarget, Mp4OutputFormat, WebMOutputFormat,
+  CanvasSource, QUALITY_HIGH, getFirstEncodableVideoCodec
+} from 'https://cdn.jsdelivr.net/npm/mediabunny@1/+esm';
+
+const FPS = 60;
+const LENGTHS = [1, 2, 3, 4, 5];
+
+const $ = (id) => document.getElementById(id);
+const drop = $('drop'), fileInput = $('file'), meta = $('meta');
+const goBtn = $('go'), stopBtn = $('stop'), statusEl = $('status'), rowsEl = $('rows');
+
+let file = null;
+let info = null;          // { duration, width, height, via }
+let cancelled = false;
+let running = false;
+
+const fmtDur = (s) => {
+  s = Math.round(s);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h ? `${h}h ${String(m).padStart(2, '0')}m ${String(r).padStart(2, '0')}s` : `${m}m ${String(r).padStart(2, '0')}s`;
+};
+const setStatus = (t, err = false) => { statusEl.textContent = t; statusEl.className = err ? 'err' : ''; };
+
+/* ---------- Frame sources ----------
+   Both expose: duration, width, height, via, frames(times) -> async iterator of
+   { i, draw(ctx, w, h) | null }, plus dispose().
+   1) Mediabunny + WebCodecs: fast, decodes only what it needs (MP4, MOV, WebM, MKV...).
+   2) <video> element: the browser's own player, used for anything else it can play. */
+
+async function openWithWebCodecs(f) {
+  if (!('VideoDecoder' in window)) throw new Error('no WebCodecs');
+  const input = new Input({ source: new BlobSource(f), formats: ALL_FORMATS });
+  const track = await input.getPrimaryVideoTrack();
+  if (!track) throw new Error('no video track');
+  if (!(await track.canDecode())) throw new Error('codec not decodable via WebCodecs');
+  const duration = await input.computeDuration();
+  const sink = new VideoSampleSink(track);
+  return {
+    via: 'WebCodecs',
+    duration,
+    width: track.displayWidth,
+    height: track.displayHeight,
+    async *frames(times) {
+      let i = 0;
+      for await (const s of sink.samplesAtTimestamps(times)) {
+        if (s) {
+          try { yield { i, draw: (ctx, w, h) => s.draw(ctx, 0, 0, w, h) }; }
+          finally { s.close(); }
+        } else {
+          yield { i, draw: null };
+        }
+        i++;
+      }
+    },
+    dispose() { try { input.dispose?.(); } catch {} }
+  };
+}
+
+async function openWithVideoElement(f) {
+  const url = URL.createObjectURL(f);
+  const v = document.createElement('video');
+  v.muted = true; v.preload = 'auto'; v.playsInline = true; v.src = url;
+  await new Promise((res, rej) => {
+    v.onloadedmetadata = res;
+    v.onerror = () => rej(new Error('This browser cannot play that file.'));
+  });
+  if (!isFinite(v.duration) || !v.videoWidth) throw new Error('This browser cannot play that file.');
+  const seek = (t) => new Promise((res) => {
+    const done = () => { v.removeEventListener('seeked', done); clearTimeout(to); res(); };
+    const to = setTimeout(done, 20000);
+    v.addEventListener('seeked', done);
+    v.currentTime = t;
+  });
+  return {
+    via: 'browser player',
+    duration: v.duration,
+    width: v.videoWidth,
+    height: v.videoHeight,
+    async *frames(times) {
+      for (let i = 0; i < times.length; i++) {
+        await seek(times[i]);
+        yield { i, draw: (ctx, w, h) => ctx.drawImage(v, 0, 0, w, h) };
+      }
+    },
+    dispose() { URL.revokeObjectURL(url); v.removeAttribute('src'); v.load(); }
+  };
+}
+
+async function openSource(f) {
+  try { return await openWithWebCodecs(f); }
+  catch (e) { console.info('Falling back to <video> element:', e.message); return await openWithVideoElement(f); }
+}
+
+/* ---------- UI plumbing ---------- */
+
+function buildRows() {
+  rowsEl.innerHTML = '';
+  for (const s of LENGTHS) {
+    const speed = info ? Math.round(info.duration / s) : null;
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.id = `row-${s}`;
+    row.innerHTML = `
+      <div class="len">${s}<small>s</small></div>
+      <div>
+        <div class="strip"><i></i></div>
+        <div class="desc">${s * FPS} frames${speed ? ` · about ${speed.toLocaleString()}× faster than the original` : ''}</div>
+      </div>
+      <div class="result"></div>`;
+    rowsEl.appendChild(row);
+  }
+}
+
+async function loadFile(f) {
+  if (running) return;
+  file = f; info = null;
+  goBtn.disabled = true;
+  meta.textContent = 'Reading file…';
+  setStatus('');
+  rowsEl.innerHTML = '';
+  try {
+    const src = await openSource(f);
+    info = { duration: src.duration, width: src.width, height: src.height, via: src.via };
+    src.dispose();
+    meta.innerHTML = `<b>${escapeHtml(f.name)}</b> · ${fmtDur(info.duration)} · ${info.width}×${info.height} · decoding with ${info.via}`;
+    buildRows();
+    goBtn.disabled = false;
+  } catch (e) {
+    meta.textContent = '';
+    setStatus(e.message || 'Could not read that file.', true);
+  }
+}
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+fileInput.addEventListener('change', () => fileInput.files[0] && loadFile(fileInput.files[0]));
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', (e) => {
+  e.preventDefault(); drop.classList.remove('over');
+  const f = e.dataTransfer.files[0]; if (f) loadFile(f);
+});
+drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+stopBtn.addEventListener('click', () => { cancelled = true; setStatus('Cancelling…'); });
+goBtn.addEventListener('click', run);
+
+/* ---------- The work ---------- */
+
+function targetSize(w, h, cap) {
+  let s = 1;
+  if (cap > 0) s = Math.min(1, cap / Math.min(w, h)); // "1080p" means short side 1080
+  const even = (n) => Math.max(2, Math.round((n * s) / 2) * 2);
+  return { w: even(w), h: even(h) };
+}
+
+async function makeEncoder(kind, w, h, canvas) {
+  const format = kind === 'mp4' ? new Mp4OutputFormat() : new WebMOutputFormat();
+  const codec = await getFirstEncodableVideoCodec(format.getSupportedVideoCodecs(), { width: w, height: h });
+  if (!codec) throw new Error(`This browser cannot encode ${kind.toUpperCase()} at ${w}×${h}.`);
+  const output = new Output({ format, target: new BufferTarget() });
+  const source = new CanvasSource(canvas, { codec, bitrate: QUALITY_HIGH });
+  output.addVideoTrack(source, { frameRate: FPS });
+  await output.start();
+  return { kind, output, source };
+}
+
+async function run() {
+  if (!file || running) return;
+  if (!('VideoEncoder' in window)) {
+    setStatus('This browser has no WebCodecs encoder. Use a recent Chrome, Edge or Safari.', true);
+    return;
+  }
+  running = true; cancelled = false;
+  goBtn.disabled = true; stopBtn.disabled = false;
+  buildRows();
+  const t0 = performance.now();
+  let src;
+  const encoders = [];     // per job: [{kind, output, source}]
+  try {
+    src = await openSource(file);
+    const D = src.duration;
+    const choice = document.querySelector('input[name=fmt]:checked').value;
+    const kinds = choice === 'both' ? ['mp4', 'webm'] : [choice];
+    const { w, h } = targetSize(src.width, src.height, +$('size').value);
+
+    // One canvas per output length, shared by that length's encoders.
+    const jobs = LENGTHS.map((s) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d', { alpha: false });
+      return { s, N: s * FPS, canvas, ctx, done: 0 };
+    });
+
+    for (const job of jobs) {
+      job.encs = [];
+      for (const k of kinds) {
+        try { job.encs.push(await makeEncoder(k, w, h, job.canvas)); }
+        catch (e) { job.errors = (job.errors || []).concat(e.message); }
+      }
+      if (!job.encs.length) throw new Error(job.errors?.[0] || 'No encoder available.');
+    }
+
+    // Evenly spaced sample times for every job, merged so the movie is decoded once.
+    const entries = [];
+    for (const job of jobs) {
+      for (let i = 0; i < job.N; i++) entries.push({ t: ((i + 0.5) * D) / job.N, job, i });
+    }
+    entries.sort((a, b) => a.t - b.t);
+    const groups = [];
+    for (const e of entries) {
+      const last = groups[groups.length - 1];
+      if (last && Math.abs(last.t - e.t) < 1e-6) last.items.push(e);
+      else groups.push({ t: e.t, items: [e] });
+    }
+    const times = groups.map((g) => g.t);
+
+    let processed = 0;
+    for await (const fr of src.frames(times)) {
+      if (cancelled) break;
+      const g = groups[fr.i];
+      // Draw once per distinct job canvas, then hand that frame to its encoders.
+      for (const { job, i } of g.items) {
+        if (fr.draw) fr.draw(job.ctx, job.canvas.width, job.canvas.height);
+        await Promise.all(job.encs.map((e) => e.source.add(i / FPS, 1 / FPS)));
+        job.done++;
+        const row = $(`row-${job.s}`);
+        row.querySelector('.strip i').style.width = `${(job.done / job.N) * 100}%`;
+      }
+      processed++;
+      if (processed % 10 === 0) {
+        const el = (performance.now() - t0) / 1000;
+        const eta = (el / processed) * (groups.length - processed);
+        setStatus(`${Math.round((processed / groups.length) * 100)}% · ${fmtDur(el)} elapsed · about ${fmtDur(eta)} left`);
+      }
+    }
+
+    if (cancelled) {
+      for (const job of jobs) for (const e of job.encs) { try { await e.output.cancel(); } catch {} }
+      setStatus('Cancelled.');
+    } else {
+      setStatus('Finishing files…');
+      for (const job of jobs) {
+        const result = $(`row-${job.s}`).querySelector('.result');
+        result.classList.add('on');
+        let first = true;
+        for (const e of job.encs) {
+          try {
+            await e.source.close();
+            await e.output.finalize();
+            const mime = e.kind === 'mp4' ? 'video/mp4' : 'video/webm';
+            const blob = new Blob([e.output.target.buffer], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const name = `${file.name.replace(/\.[^.]+$/, '')}-${job.s}s.${e.kind}`;
+            const fig = document.createElement('figure');
+            fig.innerHTML = `<video src="${url}" controls loop muted playsinline></video>
+              <figcaption><span>${e.kind.toUpperCase()} · ${(blob.size / 1048576).toFixed(1)} MB</span><a href="${url}" download="${escapeHtml(name)}">Download</a></figcaption>`;
+            result.appendChild(fig);
+            if (first) { fig.querySelector('video').autoplay = true; first = false; }
+          } catch (err) {
+            const p = document.createElement('div'); p.className = 'fail';
+            p.textContent = `${e.kind.toUpperCase()} failed: ${err.message}`;
+            result.appendChild(p);
+          }
+        }
+        for (const msg of job.errors || []) {
+          const p = document.createElement('div'); p.className = 'fail'; p.textContent = msg; result.appendChild(p);
+        }
+      }
+      setStatus(`Done in ${fmtDur((performance.now() - t0) / 1000)}.`);
+    }
+  } catch (e) {
+    console.error(e);
+    setStatus(e.message || 'Something went wrong.', true);
+  } finally {
+    try { src?.dispose(); } catch {}
+    running = false; stopBtn.disabled = true; goBtn.disabled = !file;
+  }
+}
+</script>
+</body>
+</html>
